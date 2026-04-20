@@ -1,0 +1,588 @@
+# ALP version 1.0
+# Copyright © 2024 kt corp. All rights reserved.
+#
+# This is a proprietary software of kt corp, and you may not use this file except in
+# compliance with a license agreement with kt corp. Any redistribution or use of this
+# software, with or without modification, shall be strictly prohibited without prior written
+# approval of kt corp. The copyright notice above does not evidence any actual or
+# intended publication of such software.
+
+components:
+  schemas:
+    SearchData:
+      type: array
+      items:
+        type: object
+        properties:
+          title:
+            type: string
+            example: "내국인 생활인구 수"
+          data:
+            type: array
+            items:
+              type: object
+              properties:
+                regionName:
+                  type: string
+                  example: "경기도 수원시 장안구"
+                value:
+                  type: object
+                  properties:
+                    Avg:
+                      type: string
+                      example: "60,797"
+                    Sum:
+                      type: string
+                      example: "1,459,131"
+                    Unique:
+                      type: string
+                      example: "600,894"
+          unit:
+            type: string
+            example: "(명)"
+    ChartData:
+      type: object
+      properties:
+        statSummary:
+          type: array
+          items:
+            type: object
+            properties:
+              regionName:
+                type: string
+                example: "경기도 수원시 장안구"
+              data:
+                type: object
+                properties:
+                  Avg:
+                    type: array
+                    items:
+                      type: string
+                      example: "내국인 생활인구는\n{60,797} 명 입니다."
+                  Sum:
+                    type: array
+                    items:
+                      type: string
+                      example: "내국인 생활인구는\n{60,797} 명 입니다."
+                  Unique:
+                    type: array
+                    items:
+                      type: string
+                      example: "내국인 생활인구는\n{60,797} 명 입니다."
+        dataGroups:
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+                example: "내국인 생활인구 현황"
+              data:
+                type: object
+                properties:
+                  title:
+                    type: string
+                    example: "시계열 생활인구"
+                  summary:
+                    type: string
+                    example: "{수원시 장안구} {8}월 {11}일 {오후 5시} {67,999}명으로 가장 많고, {8}월 {11}일 {오전 6시} {55,437}명으로 가장 적습니다."
+                  charts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        regionName:
+                          type: string
+                          example: "수원시 장안구"
+                        name:
+                          type: string
+                          example: "timeSeriesData"
+                        indicate:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              구분:
+                                type: string
+                                example: "8/1 0:00"
+                              생활인구:
+                                type: number
+                                example: 56711
+    PolygonData:
+      type: array
+      items:
+        type: object
+        properties:
+          time:
+            type: number
+            example: 1722438000000
+          regionCode:
+            type: number
+            example: 41111
+          regionName:
+            type: string
+            example: "경기도 수원시 장안구"
+          options:
+            type: object
+            properties:
+              start:
+                type: number
+                example: 1722438000000
+              end:
+                type: number
+                example: 1725112800000
+              regionArray:
+                type: array
+                items:
+                  type: string
+                  example: "41111"
+              timeznArray:
+                type: array
+                items:
+                  type: number
+                  example: 12
+          layerData:
+            type: object
+            properties:
+              "timestamp":
+                type: array
+                items:
+                  type: object
+                  properties:
+                    regionCode:
+                      type: number
+                      example: 41111
+                    regionName:
+                      type: string
+                      example: "경기도 수원시 장안구 파장동"
+                    options:
+                      type: object
+                      properties:
+                        "MALE_00":
+                          type: number
+                          example: 0.8040000279744466,
+                        "FEML_60":
+                          type: number
+                          example: 5.0920001347859705,
+                    center:
+                      type: array
+                      items:
+                        type: number
+                        example: 126.98934296875926
+    GridData:
+      type: array
+      items:
+        type: object
+        properties:
+          time:
+            type: number
+            example: 1722438000000
+          regionCode:
+            type: number
+            example: 41111
+          regionName:
+            type: string
+            example: "경기도 수원시 장안구"
+          options:
+            type: object
+            properties:
+              start:
+                type: number
+                example: 1722438000000
+              end:
+                type: number
+                example: 1725112800000
+              regionArray:
+                type: array
+                items:
+                  type: string
+                  example: "41111"
+              timeznArray:
+                type: array
+                items:
+                  type: number
+                  example: 12
+          layerData:
+            type: object
+            properties:
+              "timestamp":
+                type: object
+                properties:
+                  "1":
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        time:
+                          type: number
+                          example: 1722438000000
+                        count:
+                          type: object
+                          properties:
+                            "MALE_00":
+                              type: number
+                              example: 0.8040000279744466,
+                            "FEML_60":
+                              type: number
+                              example: 5.0920001347859705,
+                        coord:
+                          type: array
+                          items:
+                            type: number
+                            example: [126.98934296875926, 37.277869685980946]
+    ChartTimeSeriesData:
+      type: object
+      properties:
+        time:
+          type: number
+          example: 1723345200000
+        regionCode:
+          type: number
+          example: 41111
+        regionName:
+          type: string
+          example: "수원시 장안구"
+        options:
+          type: object
+          properties:
+            start:
+              type: number
+              format: int64
+              example: 1722438000000
+            end:
+              type: number
+              format: int64
+              example: 1725112800000
+            regionArray:
+              type: array
+              items:
+                type: string
+              example: ["41111"]
+        chartData:
+          type: object
+          properties:
+            "timestamp":
+              type: object
+              properties:
+                count:
+                  type: number
+                  example: 208.16201117318437
+    TopologyData:
+      type: object
+      properties:
+        type:
+          type: string
+          example: "Topology"
+        objects:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                geometries:
+                  type: array
+                  items:
+                    type: object
+                    # 객체 내부 정의는 필요에 따라 추가
+                type:
+                  type: string
+                  example: "GeometryCollection"
+        bbox:
+          type: array
+          items:
+            type: number
+          example:
+            [
+              124.60883555657013,
+              32.12639965271161,
+              131.87278421408797,
+              38.613709723630556,
+            ]
+        transform:
+          type: object
+          properties:
+            scale:
+              type: array
+              items:
+                type: number
+              example: [0.00007264021297730822, 0.00006487374944668391]
+            translate:
+              type: array
+              items:
+                type: number
+              example: [124.60883555657013, 32.12639965271161]
+        arcs:
+          type: array
+          items:
+            type: object
+            # arcs의 세부 구조가 필요한 경우, 내부 정의 추가 가능
+    MopPolygonData:
+      type: object
+      properties:
+        inflow:
+          type: array
+          items:
+            type: object
+            properties:
+              time:
+                type: integer
+                format: int64
+                example: 1722438000000
+              regionCode:
+                type: integer
+                example: 41111
+              regionName:
+                type: string
+                example: "경기도 수원시 장안구"
+              center:
+                type: array
+                items:
+                  type: number
+                example: [127.0034134311512, 37.313974747359275]
+              options:
+                type: object
+                properties:
+                  start:
+                    type: integer
+                    format: int64
+                    example: 1722438000000
+                  end:
+                    type: integer
+                    format: int64
+                    example: 1725112800000
+                  regionArray:
+                    type: array
+                    items:
+                      type: string
+                    example: ["41111"]
+                  timeznArray:
+                    type: array
+                    items:
+                      type: integer
+                    example: [12]
+                  isPurpose:
+                    type: boolean
+                    example: true
+              layerData:
+                type: object
+                properties:
+                  "timestamp":
+                    type: object
+                    properties:
+                      regionCode:
+                        type: integer
+                        example: 41111
+                      regionName:
+                        type: string
+                        example: "경기도 수원시 장안구"
+                      destinations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            regionCode:
+                              type: integer
+                              example: 11200
+                            regionName:
+                              type: string
+                              example: "서울특별시 성동구"
+                            count:
+                              type: object
+                              properties:
+                                PRPS0:
+                                  type: integer
+                                  example: 0
+                                PRPS6:
+                                  type: integer
+                                  example: 0
+                            center:
+                              type: array
+                              items:
+                                type: number
+                              example: [127.04100331479654, 37.551001861877126]
+                            timeOri:
+                              type: integer
+                              format: int64
+                              example: 1722438000000
+                            timeDes:
+                              type: integer
+                              format: int64
+                              example: 1722524400000
+        outflow:
+          type: array
+          items:
+            type: object
+            properties:
+              time:
+                type: integer
+                format: int64
+                example: 1722438000000
+              regionCode:
+                type: integer
+                example: 41111
+              regionName:
+                type: string
+                example: "경기도 수원시 장안구"
+              center:
+                type: array
+                items:
+                  type: number
+                example: [127.0034134311512, 37.313974747359275]
+              options:
+                type: object
+                properties:
+                  start:
+                    type: integer
+                    format: int64
+                    example: 1722438000000
+                  end:
+                    type: integer
+                    format: int64
+                    example: 1725112800000
+                  regionArray:
+                    type: array
+                    items:
+                      type: string
+                    example: ["41111"]
+                  timeznArray:
+                    type: array
+                    items:
+                      type: integer
+                    example: [12]
+                  isPurpose:
+                    type: boolean
+                    example: true
+              layerData:
+                type: object
+                properties:
+                  "timestamp":
+                    type: object
+                    properties:
+                      regionCode:
+                        type: integer
+                        example: 41111
+                      regionName:
+                        type: string
+                        example: "경기도 수원시 장안구"
+                      destinations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            regionCode:
+                              type: integer
+                              example: 11200
+                            regionName:
+                              type: string
+                              example: "서울특별시 성동구"
+                            count:
+                              type: object
+                              properties:
+                                PRPS0:
+                                  type: integer
+                                  example: 0
+                                PRPS6:
+                                  type: integer
+                                  example: 0
+                            center:
+                              type: array
+                              items:
+                                type: number
+                              example: [127.04100331479654, 37.551001861877126]
+                            timeOri:
+                              type: integer
+                              format: int64
+                              example: 1722438000000
+                            timeDes:
+                              type: integer
+                              format: int64
+                              example: 1722524400000
+    FlowPolygonData:
+      type: array
+      items:
+        type: object
+        properties:
+          time:
+            type: integer
+            format: int64
+            example: 1722438000000
+          regionCode:
+            type: integer
+            example: 41111
+          regionName:
+            type: string
+            example: "경기도 수원시 장안구"
+          center:
+            type: array
+            items:
+              type: number
+            example: [127.0034134311512, 37.313974747359275]
+          options:
+            type: object
+            properties:
+              start:
+                type: integer
+                format: int64
+                example: 1722438000000
+              end:
+                type: integer
+                format: int64
+                example: 1725112800000
+              regionArray:
+                type: array
+                items:
+                  type: string
+                example: ["41111"]
+              timeznArray:
+                type: array
+                items:
+                  type: integer
+                example: [12]
+              isPurpose:
+                type: boolean
+                example: true
+          layerData:
+            type: object
+            properties:
+              "timestamp":
+                type: object
+                properties:
+                  regionCode:
+                    type: integer
+                    example: 41111
+                  regionName:
+                    type: string
+                    example: "경기도 수원시 장안구"
+                  destinations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        regionCode:
+                          type: integer
+                          example: 11200
+                        regionName:
+                          type: string
+                          example: "서울특별시 성동구"
+                        count:
+                          type: object
+                          properties:
+                            PRPS0:
+                              type: integer
+                              example: 0
+                            PRPS6:
+                              type: integer
+                              example: 0
+                        center:
+                          type: array
+                          items:
+                            type: number
+                          example: [127.04100331479654, 37.551001861877126]
+                        timeOri:
+                          type: integer
+                          format: int64
+                          example: 1722438000000
+                        timeDes:
+                          type: integer
+                          format: int64
+                          example: 1722524400000

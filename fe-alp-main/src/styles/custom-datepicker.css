@@ -1,0 +1,177 @@
+/* 
+* ALP version 1.0
+
+* Copyright © 2024 kt corp. All rights reserved.
+
+* 
+
+* This is a proprietary software of kt corp, and you may not use this file except in
+
+* compliance with license agreement with kt corp. Any redistribution or use of this
+
+* software, with or without modification shall be strictly prohibited without prior written
+
+* approval of kt corp, and the copyright notice above does not evidence any actual or
+
+* intended publication of such software.
+
+*/
+
+/* Custom CSS: react-datepicker */
+
+.rdrCalendarWrapper {
+	@apply z-50;
+}
+.react-datepicker-popper {
+	@apply z-20 w-full;
+}
+.monthSelector .react-datepicker-popper {
+	top: -0.6rem !important;
+}
+
+.react-datepicker-wrapper,
+.react-datepicker__input-container {
+	@apply h-full w-full border-b-0 bg-white;
+}
+.monthSelector .react-datepicker-wrapper,
+.monthSelector .react-datepicker__input-container {
+	@apply bg-transparent;
+}
+
+.react-datepicker__triangle {
+	@apply hidden;
+}
+
+.react-datepicker__header {
+	@apply border-none bg-white dark:bg-[#212124] dark:text-white !important;
+}
+
+.react-datepicker__day--selected {
+	@apply bg-primary text-white;
+}
+.react-datepicker__day--selected,
+.react-datepicker__day--in-selecting-range,
+.react-datepicker__day--in-range,
+.react-datepicker__month-text--selected,
+.react-datepicker__month-text--in-selecting-range,
+.react-datepicker__month-text--in-range,
+.react-datepicker__quarter-text--selected,
+.react-datepicker__quarter-text--in-selecting-range,
+.react-datepicker__quarter-text--in-range,
+.react-datepicker__year-text--selected,
+.react-datepicker__year-text--in-selecting-range,
+.react-datepicker__year-text--in-range {
+	@apply bg-primary-light text-black;
+}
+
+.react-datepicker__day--selected:not([aria-disabled="true"]):hover,
+.react-datepicker__day--in-selecting-range:not([aria-disabled="true"]):hover,
+.react-datepicker__day--in-range:not([aria-disabled="true"]):hover,
+.react-datepicker__month-text--selected:not([aria-disabled="true"]):hover,
+.react-datepicker__month-text--in-selecting-range:not([aria-disabled="true"]):hover,
+.react-datepicker__month-text--in-range:not([aria-disabled="true"]):hover,
+.react-datepicker__quarter-text--selected:not([aria-disabled="true"]):hover,
+.react-datepicker__quarter-text--in-selecting-range:not([aria-disabled="true"]):hover,
+.react-datepicker__quarter-text--in-range:not([aria-disabled="true"]):hover,
+.react-datepicker__year-text--selected:not([aria-disabled="true"]):hover,
+.react-datepicker__year-text--in-selecting-range:not([aria-disabled="true"]):hover,
+.react-datepicker__year-text--in-range:not([aria-disabled="true"]):hover {
+	@apply bg-primary-light text-black;
+}
+
+.react-datepicker__day--selected:hover,
+.react-datepicker__day--in-selecting-range:hover,
+.react-datepicker__day--in-range:hover,
+.react-datepicker__month-text--selected:hover,
+.react-datepicker__month-text--in-selecting-range:hover,
+.react-datepicker__month-text--in-range:hover,
+.react-datepicker__quarter-text--selected:hover,
+.react-datepicker__quarter-text--in-selecting-range:hover,
+.react-datepicker__quarter-text--in-range:hover,
+.react-datepicker__year-text--selected:hover,
+.react-datepicker__year-text--in-selecting-range:hover,
+.react-datepicker__year-text--in-range:hover {
+	@apply bg-primary text-white;
+}
+
+.react-datepicker__day--in-selecting-range:not(
+		.react-datepicker__day--in-range,
+		.react-datepicker__month-text--in-range,
+		.react-datepicker__quarter-text--in-range,
+		.react-datepicker__year-text--in-range
+	),
+.react-datepicker__month-text--in-selecting-range:not(
+		.react-datepicker__day--in-range,
+		.react-datepicker__month-text--in-range,
+		.react-datepicker__quarter-text--in-range,
+		.react-datepicker__year-text--in-range
+	),
+.react-datepicker__quarter-text--in-selecting-range:not(
+		.react-datepicker__day--in-range,
+		.react-datepicker__month-text--in-range,
+		.react-datepicker__quarter-text--in-range,
+		.react-datepicker__year-text--in-range
+	),
+.react-datepicker__year-text--in-selecting-range:not(
+		.react-datepicker__day--in-range,
+		.react-datepicker__month-text--in-range,
+		.react-datepicker__quarter-text--in-range,
+		.react-datepicker__year-text--in-range
+	) {
+	@apply bg-primary-light text-black;
+}
+
+.react-datepicker {
+	@apply w-full border border-[#e5e7eb] dark:border-[#444444] dark:bg-[#121216];
+}
+
+.react-datepicker__month-container {
+	@apply w-full;
+}
+
+.react-datepicker__month-wrapper {
+	@apply flex justify-between;
+}
+
+.react-datepicker__month-text {
+	@apply !w-full p-4 dark:text-[#ddd];
+}
+.react-datepicker__month-text:hover {
+	@apply dark:bg-[#212124] dark:text-[#ddd];
+}
+
+.react-datepicker__month-text--keyboard-selected {
+	@apply bg-[#d63457] p-4 text-white;
+}
+
+.rdrMonthAndYearWrapper {
+	@apply !h-auto pt-2;
+}
+.rdrMonth {
+	@apply !w-full !pb-0;
+}
+.rdrInRange {
+	@apply bg-[#ffeff2];
+}
+
+.rdrDay:not(.rdrDayPassive) .rdrInRange ~ .rdrDayNumber span {
+	@apply text-[#d63457];
+}
+
+.rdrDayToday .rdrDayNumber span:after {
+	@apply bg-transparent;
+}
+
+.rdrNextPrevButton {
+	@apply border border-[#e4e8ee] bg-transparent;
+}
+.rdrYearPicker {
+	@apply order-1;
+}
+.rdrMonthPicker {
+	@apply order-2;
+}
+
+.rdrMonthAndYearPickers select:hover {
+	@apply bg-transparent;
+}

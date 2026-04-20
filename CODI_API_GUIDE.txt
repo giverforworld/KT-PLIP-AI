@@ -1,0 +1,561 @@
+PLIP AI 사용법 및 KEY
+
+API_URL = https://api.codi.kt.co.kr/v1
+API_KEY = app-L9s3rr4HnelxT1lax2SFTPbz
+
+
+대화형 앱 API 가이드
+API를 사용하여 최종 사용자 인터페이스를 직접 개발할 수 있습니다.
+현재 사용하는 앱 분류는 채팅앱으로, 채팅앱의 경우 세션유지 기능을 지원합니다. ( 챗봇, 고객 상담 등에 적합합니다. )
+세션 안에서 발생하는 채팅은 답변을 위한 Context 정보로 사용됩니다.
+
+API URL
+https://api.codi.kt.co.kr/v1
+
+Header
+인증을 위해 제공되는 API Key를 HTTP의 Authorization Header에 넣어주세요.
+
+ex) Authorization: Bearer YOUR_API_KEY
+
+요청을 보내는 클라이언트를 식별하기 위해 User-Agent Header를 꼭 포함해주세요.
+
+ex) User-Agent: YOUR_APP_NAME/1.0
+
+POST
+endpoint: /chat-messages
+
+
+Request 설명
+채팅 메시지를 전송합니다.
+
+Body
+query (string): 사용자의 질문
+inputs (object): 앱에서 사전 정의한 변수의 key-value 값을 넣습니다. 아무것도 없으면 기본값으로 를 넣습니다.
+response_mode (string): streaming( 스트리밍 모드입니다. 타이핑 하는것과 같이 연속적으로 응답이 발생합니다.) <br/>blocking : 블럭킹 모드입니다. 한번에 완성된 응답이 발생합니다 ( 채팅앱에서는 지원하지 않습니다. )
+user (string): 사용자 이름 ( 사용자를 인식할 수 있는 Unique한 값이 되어야 합니다 )
+converstation_id (string): 대화 아이디, 값을 넣으면 대화를 이어서 하고, 아니면 새로운 대화를 만듭니다.
+files (array[object]): 이미지, 이미지를 설명하는 텍스트로 이루어진 파일 리스트 입니다. 사용하는 모델이 vision 기능을 지원해야 작동합니다.
+type (string) : 파일타입, 현재는 image 만 가능합니다.
+transfer_method (string) : 전송방식, remote_url 또는 local_file 을 넣습니다.
+url (string) : remote_url을 선택하였을 경우 url을 넣습니다.
+upload_file_id (string) : 파일 업로드 api를 사용한다음 응답받은 id 값을 넣습니다.
+auto_generate_name (bool): 대화 제목을 자동으로 생성할지 여부를 결정합니다. 기본값은 false 입니다.
+Example
+curl
+
+
+curl -X POST 'https://api.codi.kt.co.kr/v1/chat-messages' \
+--header 'Authorization: Bearer {API_KEY}' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "inputs": {},
+    "query": "[삭제X] PLIP_AI에 대해 알려줘",
+    "response_mode": "streaming",
+    "conversation_id": "",
+    "user": "test1234",
+    "files": [
+        {
+        "type": "image",
+        "transfer_method": "remote_url",
+        "url": "https://api.codi.kt.co.kr/v1/logo/logo.png"
+        }
+    ]
+}'
+Response 설명
+streaming 모드의 Response 내용
+
+Body
+응답 메시지 청크단위 스트리밍으로 리턴합니다.
+Content-Type은 text/event-stream 입니다.
+각각의 청크들은 data: 로 시작되고, \n\n 으로 구분됩니다.
+
+event : 메시지 이벤트 타입: 아래 내용은 이벤트 타입에 따른 output 설명 입니다
+
+event : message, agent_message ( 대화형 앱 에서만 작동 ): LLM에 의해 생성된 메시지 이벤트
+
+event (string) : message or agent_message
+task_id (string) : 작업 아이디, API 중지를 위해 사용될 수 있습니다.
+message_id (string) : 메시지 아이디
+conversation_id (string) : 대화 ID
+answer (string) : LLM이 응답한 텍스트 일부
+created_at (int) : 생성일시
+event : message_file: Tools에 의해 새로운 파일이 생성되었을때 발생하는 이벤트
+
+event (string) : message_file
+id (string) : 파일 아이디
+type (string) : 파일 타입 ( image )
+belongs_to (string)
+url (string) : 파일 URL
+conversation_id (string) : 대화 아이디
+event : message_end: 메시지 수신이 완전히 종료되었을때 발생하는 이벤트
+
+event (string) : message_end
+task_id (string) : 작업 아이디
+message_id (string) : 메시지 아이디
+conversation_id (string) : 대화 아이디
+metadata (object) : 메타데이터
+usage(Usage) : 모델 사용 정보
+retriever_resources(array[RetrieverResources]) : 인용, 기여 리스트
+event : message_replace: moderation api가 활성화 되어있을 경우 필터링이 필요한 내용을 교체해주는 이벤트
+
+event (string) : message_replace
+task_id (string) : 작업 아이디
+message_id (string) : 메시지 아이디
+conversation_id (string) : 대화 아이디
+answer (string) : LLM이 응답한 텍스트 일부
+created_at (int) : 생성일시
+event : ping: 연결 유지를 위한 ping 이벤트
+
+event : error: 에러 이벤트
+
+event (string) : error
+task_id (string) : 작업 아이디
+message_id (string) : 메시지 아이디
+status (int) : http 상태 코드
+code (string) : error 코드
+message (string) : error 메시지
+Example
+Event Stream
+
+
+data: {"event": "message", "message_id": "2ac3ab98-b2c6-4031-b334-81d423be3295", "conversation_id": "55231984-6128-5bd1-8d91-34566b4215f1", "answer": "안녕", "created_at": 1679586595}
+data: {"event": "message", "message_id": "2ac3ab98-b2c6-4031-b334-81d423be3295", "conversation_id": "55231984-6128-5bd1-8d91-34566b4215f1", "answer": "하세요", "created_at": 1679586595}
+data: {
+    "event": "message_end",
+    "id": "5e52ce04-874b-4d27-9045-b3bc80def685",
+    "conversation_id": "55231984-6128-5bd1-8d91-34566b4215f1",
+    "metadata": {
+        "usage": {
+            "prompt_tokens": 1033,
+            "prompt_unit_price": "0.001",
+            "prompt_price_unit": "0.001",
+            "prompt_price": "0.0010330",
+            "completion_tokens": 135,
+            "completion_unit_price": "0.002",
+            "completion_price_unit": "0.001",
+            "completion_price": "0.0002700",
+            "total_tokens": 1168,
+            "total_price": "0.0013030",
+            "currency": "USD",
+            "latency": 1.381760165997548,
+            "retriever_resources": [
+                {
+                    "position": 1,
+                    "dataset_id": "231a5c94-dc21-353c-9121-5361adc2cbdb",
+                    "dataset_name": "iPhone",
+                    "document_id": "4ss1aa71-2c3d-4071-c236-5d12aadd1e10",
+                    "document_name": "iPhone List",
+                    "segment_id": "1d492c7a-1221-3413-d1ds-13216b21271a",
+                    "score": 0.98457545,
+                    "content": ""상품","상품출시일","가격","요금제","약정기간""
+                }
+            ]
+        }
+    }
+}
+에러
+에러 종류 및 메시지
+
+Errors
+404, Conversation does not exists - 대화가 존재하지 않음
+400, invalid_param, abnormal parameter input - 비정상적인 파라미터 입력
+400, app_unavailable, App configuration unavailable - 앱 설정을 사용할 수 없음
+400, provider_not_initialize, no available model credential configuration - 사용 가능한 모델 자격 증명 구성 없음
+400, provider_quota_exceeded, model invocation quota insufficient - 모델 호출 할당량 부족
+400, model_currently_not_support, current model unavailable - 현재 모델을 사용할 수 없음
+400, completion_request_error, text generation failed - 텍스트 생성 실패
+400, file_too_large, File size exceeds maximum limit - 파일 크기가 최대 제한을 초과
+400, unsupported_file_type, File type not supported - 지원되지 않는 파일 유형
+413, file_upload_failed, File upload failed - 파일 업로드 실패
+500, internal server error - 내부 서버 오류
+POST
+endpoint: /files/upload
+
+
+Request 설명
+채팅 메시지에서 이미지 입력을 위한 파일을 업로드합니다.
+
+Body (multipart / form-data)
+file (File): 업로드할 파일 ( 지원 형식: png, jpg, jpeg, webp, gif )
+user (string): 사용자 이름 ( 사용자를 인식할 수 있는 Unique한 값이 되어야 합니다 )
+Example
+curl
+
+
+curl -X POST 'https://api.codi.kt.co.kr/v1/files/upload' \
+--header 'Authorization: Bearer {API_KEY}' \
+--form 'file=@"path/to/image.jpg"' \
+--form 'user="test1234"'
+Response 설명
+파일 업로드 Response 내용
+
+Body
+id (string): 파일 아이디
+name (string): 파일 이름
+size (int): 파일 크기 (bytes)
+extension (string): 파일 확장자
+mime_type (string): MIME 타입
+created_by (string): 파일 업로드한 사용자
+created_at (int): 생성일시
+Example
+JSON
+
+
+{
+      "id": "b555c987-65c4-4306-96fc-caa4df20f32c",
+      "name": "example.jpg",
+      "size": 256875,
+      "extension": "jpg",
+      "mime_type": "image/jpeg",
+      "created_by": "test1234",
+      "created_at": 1705591320
+  }
+에러
+파일 업로드 에러 코드
+
+Errors
+400, no_file_uploaded, a file must be provided
+400, too_many_files, currently only one file is accepted
+400, unsupported_preview, the file does not support preview
+400, unsupported_estimate, the file does not support estimation
+400, file_too_large, File size exceeds maximum limit
+400, unsupported_file_type, File type not supported
+413, file_upload_failed, File upload failed
+415, unsupported_file_type, unsupported extension, currently only document files are accepted
+503, s3_connection_failed, unable to connect to S3 service
+503, s3_permission_denied, no permission to upload files to S3
+503, s3_file_too_large, file exceeds S3 size limit
+500, internal server error
+POST
+endpoint: /chat-messages/{task_id}/stop
+
+
+Request 설명
+진행 중인 채팅 작업을 중지합니다.
+
+Body
+user (string): 사용자 이름
+Example
+curl
+
+
+curl -X POST 'https://api.codi.kt.co.kr/v1/chat-messages/{task_id}/stop' \
+--header 'Authorization: Bearer {API_KEY}' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "user": "test1234"
+}'
+POST
+endpoint: /conversations/{conversation_id}/name
+
+
+Request 설명
+대화의 제목을 변경합니다.
+
+Body
+name (string): 대화의 제목. auto_generate가 true면 없어도 됩니다.
+auto_generate (bool): 자동으로 대화 제목 생성여부. 기본값 false.
+Example
+curl
+
+
+curl -X POST 'https://api.codi.kt.co.kr/v1/conversations/{conversation_id}/name' \
+--header 'Authorization: Bearer {API_KEY}' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "name": "AI 통화비서",
+    "auto_generate": false
+}'
+Response 설명
+대화 제목 변경 Response 내용
+
+Body
+id (string): 대화 아이디
+name (string): 대화 이름
+inputs (array[object]): 사용자 입력 파라미터
+introduction (string): 소개
+created_at (int): 생성일시 (Timestamp)
+Example
+JSON
+
+
+{
+      "id": "1c7b048a-8a30-46ff-b62d-d40906341af9",
+      "name": "AI 통화비서",
+      "inputs": {},
+      "introduction": "",
+      "created_at": 1705569238
+  }
+GET
+endpoint: /conversations
+
+
+Request 설명
+현재 사용자의 대화 리스트를 조회합니다. 기본적으로 가장 최근의 20건을 조회합니다.
+
+Query Parameters
+user (string): 개발자가 지정한 Unique한 최종사용자 아이디
+last_id (string, optional): 현재 페이지에서 조회한 마지막 레코드, 기본값은 null
+limit (int, optional): 조회할 최대 레코드 개수 (기본값: 20)
+pinned (bool, optional): 즐겨찾기(pinned) 지정된 대화만 조회. true/false
+Example
+curl
+
+
+curl -X GET 'https://api.codi.kt.co.kr/v1/conversations?user=test1234&last_id=&limit=20' \
+--header 'Authorization: Bearer {API_KEY}' \
+Response 설명
+대화 목록 조회 Response 내용
+
+Body
+data (array[object]): 대화 목록
+id (string) : 대화 아이디
+name (string) : 대화 이름, 따로 지정을 안했으면 가장 처음 요청한 질문으로 처리
+inputs (array[object]) : 사용자 입력값
+introduction (string) : 소개
+created_at (int) : 생성일자 (Timestamp)
+has_more (bool): 더 조회할 데이터가 있는지 여부
+limit (int): 한번에 조회할 레코드 개수, 최대값을 넘기면 최대값 만큼만 조회됨
+Example
+json
+
+
+{
+    "limit": 20,
+    "has_more": false,
+    "data": [
+        {
+            "id": "10799fb8-64f7-4296-bbf7-b42bfbe0ae54",
+            "name": "New chat",
+            "inputs": {
+                "book": "book",
+                "myName": "Lucy"
+            },
+            "status": "normal",
+            "created_at": 1679667915
+        },
+        {
+            "id": "hSIhXBhNe8X1d8Et"
+            // ...
+        }
+    ]
+}
+GET
+endpoint: /messages
+
+
+Request 설명
+대화의 메시지 히스토리를 조회합니다.
+
+Query Parameters
+conversation_id (string): 대화 아이디
+user (string): 사용자 이름
+first_id (string, optional): 페이지네이션을 위한 시작 메시지 ID
+limit (int, optional): 한 번에 가져올 메시지 수 (기본값: 20)
+Example
+curl
+
+
+curl -X GET 'https://api.codi.kt.co.kr/v1/messages?conversation_id=45701982-8118-4bc5-8e9b-64562b4555f2&user=test1234&limit=10' \
+--header 'Authorization: Bearer {API_KEY}' \
+Response 설명
+메세지 히스토리 Response 내용
+
+Body
+data (array[object]): 메시지 리스트
+id (string) : 메시지 아이디
+conversation_id (string) : 대화 아이디
+inputs (array[object]) : 사용자 입력값
+query (string) : 질문
+message_files (array[object]) : 메시지 파일 정보
+agent_thoughts (array[object]) : AI의 처리 프로세스
+answer (string) : 답변
+created_at (int) : 생성일시 (timestamp)
+feedback (object) : 피드백 정보
+retriever_resources (array[RetrieverResource]) : 인용, 기여 리스트
+has_more (bool): 다음 페이지가 있는지 여부
+limit (int): 한번에 조회되는 아이템 개수
+Example
+json
+
+
+{
+    "limit": 20,
+    "has_more": false,
+    "data": [
+        {
+            "id": "0b136982-3e21-4ce3-a143-6f7a32af9e7a",
+            "conversation_id": "3002ae74-a2f0-4efa-b7e2-c7a7cf5fdbe2",
+            "inputs": {},
+            "query": "드래곤을 그려줘",
+            "answer": "드래곤을 그리겠습니다. 메시지를 확인해주세요.",
+            "message_files": [
+                {
+                    "id": "4e291085-c3ed-4cbb-a47e-ace64f0521b7",
+                    "type": "image",
+                    "url": "http://example.com/image.png",
+                    "belongs_to": "assistant"
+                }
+            ],
+            "feedback": null,
+            "retriever_resources": [],
+            "created_at": 1705988187,
+            "agent_thoughts": [
+                {
+                    "id": "bcbb4342-7725-48bb-a325-7040e799878b",
+                    "message_id": "9a3f9f02-fa20-47f5-b83b-dc1a39b2abba",
+                    "position": 1,
+                    "thought": "",
+                    "tool": "dalle2",
+                    "tool_input": "{\"dalle2\": {\"prompt\": \"cat\"}}",
+                    "created_at": 1705988186,
+                    "observation": "이미지가 만들어졌습니다.",
+                    "message_files": ["adb6e07d-f762-4f04-b51c-95798106287d"]
+                }
+            ]
+        }
+    ]
+}
+DELETE
+endpoint: /conversations/{conversation_id}
+
+
+Request 설명
+대화를 삭제합니다.
+
+Body
+user (string): 사용자 이름
+Example
+curl
+
+
+curl -X DELETE 'https://api.codi.kt.co.kr/v1/conversations/{conversation_id}' \
+--header 'Authorization: Bearer {API_KEY}' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "user": "test1234"
+}'
+Response 설명
+대화 삭제 Response 내용
+
+Body
+result (string): 삭제 결과 (success)
+Example
+json
+
+
+{
+    "result": "success"
+}
+POST
+endpoint: /messages/{message_id}/feedbacks
+
+
+Request 설명
+메시지에 대한 피드백(좋아요/싫어요)을 제공합니다.
+
+Body
+rating (string): 피드백 값("like", "dislike", null)
+user (string): 사용자 이름
+Example
+curl
+
+
+curl -X POST 'https://api.codi.kt.co.kr/v1/messages/{message_id}/feedbacks' \
+--header 'Authorization: Bearer {API_KEY}' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "rating": "like",
+    "user": "test1234"
+}'
+GET
+endpoint: /messages/{message_id}/suggested
+
+
+Request 설명
+메시지를 기반으로 추천 질문을 조회합니다.
+
+Query Parameters
+user (string): 사용자 이름
+Example
+curl
+
+
+curl -X GET 'https://api.codi.kt.co.kr/v1/messages/{message_id}/suggested?user=test1234' \
+--header 'Authorization: Bearer {API_KEY}' \
+Response 설명
+추천 질문 조회 Response 내용
+
+Body
+result (string): 성공여부 (success만 반환됩니다.)
+data (array[string]): 추천 질문 리스트
+Example
+json
+
+
+{
+    "result": "success",
+    "data": [
+        "추천 질문 1",
+        "추천 질문 2",
+        "추천 질문 3"
+    ]
+}
+GET
+endpoint: /parameters
+
+
+Request 설명
+앱의 설정 정보(시작 문구, 제안 질문, 사용자 입력 양식 등)를 조회합니다.
+
+Query Parameters
+user (string): 사용자 이름
+Example
+curl
+
+
+curl -X GET 'https://api.codi.kt.co.kr/v1/parameters?user=test1234' \
+--header 'Authorization: Bearer {API_KEY}' \
+Response 설명
+앱 설정 정보 Response 내용
+
+Body
+opening_statement (string): 앱 시작 시 표시되는 문구
+suggested_questions (array[string]): 제안 질문 목록
+user_input_form (array): 사용자 입력 양식 설정
+file_upload (object): 파일 업로드 설정
+Example
+json
+
+
+{
+    "opening_statement": "안녕하세요! 무엇을 도와드릴까요?",
+    "suggested_questions": [
+        "서비스에 대해 알려주세요",
+        "가격 정보를 알고 싶습니다"
+    ],
+    "user_input_form": [],
+    "file_upload": {
+        "image": {
+            "enabled": true,
+            "number_limits": 3,
+            "detail": "high",
+            "transfer_methods": ["remote_url", "local_file"]
+        }
+    }
+}
+GET
+endpoint: /meta
+
+
+Request 설명
+앱의 메타데이터(도구 아이콘, 이모지 등)를 조회합니다.
+
+Query Parameters
+user (string): 사용자 이름
+Example
+curl
+
+
+curl -X GET 'https://api.codi.kt.co.kr/v1/meta?user=test1234' \
+--header 'Authorization: Bearer {API_KEY}' \

@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.next/
+out/
+logs/
+*.log
+.env
+.env.*
+!.env.example
+# BE uses env files without leading dot
+be-alp-main/env
+be-alp-main/env.*
+.DS_Store
+Thumbs.db
+bash.exe.stackdump
+
+# Claude Code local config
+.claude/
+
+# local test clone
+../PLIP-dummy-test/

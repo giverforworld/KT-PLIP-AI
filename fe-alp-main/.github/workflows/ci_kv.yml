@@ -1,0 +1,465 @@
+name: fe-alp / Docker - Multi Stage Build using Key Vault
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - stg
+          - prd
+          - trivy
+      dev_image_tag:
+        description: "Dev image tag to promote to PRD (Required for PRD deployment)"
+        required: false
+        type: string
+
+permissions:
+  id-token: write  # GitHub에서 Azure로 인증을 위한 OIDC 토큰 권한
+  contents: read
+
+jobs:
+  build:
+    if: github.event.inputs.environment == 'dev'
+    runs-on: ["npm-arc"]
+    outputs:
+      image_tag: ${{ steps.date-increment.outputs.image_tag }}
+
+    steps:
+    - name: 1) Checkout
+      uses: actions/checkout@v4
+      
+    - name: 2) Generate build ID
+      id: build-id
+      run: |
+        echo "BUILD_ID=$(TZ=Asia/Seoul date +'%Y-%m-%d')-${{ github.run_number }}" >> $GITHUB_OUTPUT
+        echo "NPM_CONFIG_REGISTRY=$NPM_CONFIG_REGISTRY" >> $GITHUB_ENV
+
+    - name: 3) Set outputs image_tag
+      id: date-increment
+      run: |                    
+        echo "image_tag=${{ steps.build-id.outputs.BUILD_ID }}" >> $GITHUB_OUTPUT      
+        
+
+    - name: 4) Parse Azure credentials (key vault)
+      id: parse-credentials
+      run: |
+        echo "AZURE_CLIENT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .clientId)" >> $GITHUB_ENV
+        echo "AZURE_TENANT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .tenantId)" >> $GITHUB_ENV
+        echo "AZURE_SUBSCRIPTION_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .subscriptionId)" >> $GITHUB_ENV
+        echo "AZURE_KEYVAULT_NAME=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .keyVaultName)" >> $GITHUB_ENV
+        echo $ACTIONS_ID_TOKEN_REQUEST_TOKEN | cut -d '.' -f 2 | base64 -d | jq
+
+    - name: 5) Azure login (OIDC)
+      uses: azure/login@v2
+      env:
+        AZURE_LOGIN_PRE_CLEANUP: true
+      with:
+        client-id: ${{ env.AZURE_CLIENT_ID }}
+        tenant-id: ${{ env.AZURE_TENANT_ID }}
+        subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}        
+      
+    - name: 6) Retrieve secrets (key vault)
+      run: |
+        echo "ACR_USERNAME=$(az keyvault secret show --name acr-username --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+        echo "ACR_PASSWORD=$(az keyvault secret show --name acr-password --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+        echo "ACR_URL=$(az keyvault secret show --name acr-url --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+        echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+        echo "NEXUS_USERNAME=$(az keyvault secret show --name nexus-username --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+        echo "NEXUS_PASSWORD=$(az keyvault secret show --name nexus-password --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+      env:
+        AZURE_CLIENT_ID: ${{ env.AZURE_CLIENT_ID }}
+        AZURE_TENANT_ID: ${{ env.AZURE_TENANT_ID }}
+        AZURE_SUBSCRIPTION_ID: ${{ env.AZURE_SUBSCRIPTION_ID }}
+        AZURE_KEYVAULT_NAME: ${{ env.AZURE_KEYVAULT_NAME }}
+        NEXUS_USERNAME: ${{ env.NEXUS_USERNAME }}
+        NEXUS_PASSWORD: ${{ env.NEXUS_PASSWORD }}
+
+    - name: 6-1) Configure NPM with Nexus Registry
+      run: |
+        cat <<EOF >> .npmrc
+        registry=https://repository.azdevops.kt.co.kr/repository/npm-group/
+        //repository.azdevops.kt.co.kr/repository/npm-group/:username=${{ env.NEXUS_USERNAME }}
+        //repository.azdevops.kt.co.kr/repository/npm-group/:_password=$(echo -n "${{ env.NEXUS_PASSWORD }}" | base64)
+        always-auth=true
+        EOF
+      shell: bash
+
+    - name: 7) Login to ACR
+      uses: azure/docker-login@v1
+      with:
+        login-server: ${{ env.ACR_URL }}
+        username: ${{ env.ACR_USERNAME }}
+        password: ${{ env.ACR_PASSWORD }}
+        
+    - name: 8) Build the Docker image    
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: Dockerfile
+        tags: ${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}:${{ steps.date-increment.outputs.image_tag }} 
+        build-arg: | 
+          NPM_CONFIG_REGISTRY=${{ env.NPM_CONFIG_REGISTRY }}
+        secret-files: |        
+          npmrc=./.npmrc
+
+    - name: 9) Log in to Azure Container Registry
+      run: echo ${{ env.ACR_PASSWORD }} | docker login ${{ env.ACR_URL }} -u ${{ env.ACR_USERNAME }} --password-stdin
+
+    - name: 10) Push Docker image
+      run: |
+        docker push ${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}:${{ steps.date-increment.outputs.image_tag }}
+      
+  update-manifests-dev:
+    if: github.event.inputs.environment == 'dev'
+    runs-on: ["npm-arc"]
+    needs: build
+
+    permissions:
+      contents: write  # 매니페스트 커밋을 위해 추가
+      id-token: write  # OIDC 토큰 사용
+
+    steps:
+      - name: 1) Parse Azure credentials (key vault)
+        id: parse-credentials
+        run: |
+          echo "AZURE_CLIENT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .clientId)" >> $GITHUB_ENV
+          echo "AZURE_TENANT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .tenantId)" >> $GITHUB_ENV
+          echo "AZURE_SUBSCRIPTION_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .subscriptionId)" >> $GITHUB_ENV
+          echo "AZURE_KEYVAULT_NAME=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .keyVaultName)" >> $GITHUB_ENV
+          echo $ACTIONS_ID_TOKEN_REQUEST_TOKEN | cut -d '.' -f 2 | base64 -d | jq
+
+      - name: 2) Azure login (OIDC)
+        uses: azure/login@v2
+        env:
+          AZURE_LOGIN_PRE_CLEANUP: true
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}        
+        
+      - name: 3) Retrieve secrets (key vault)
+        run: |
+          echo "ACR_URL=$(az keyvault secret show --name acr-url --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "CICD_TOKEN=$(az keyvault secret show --name cicd-token --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+          echo "NEXUS_USERNAME=$(az keyvault secret show --name nexus-username --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "NEXUS_PASSWORD=$(az keyvault secret show --name nexus-password --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+
+        env:
+          AZURE_CLIENT_ID: ${{ env.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ env.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          AZURE_KEYVAULT_NAME: ${{ env.AZURE_KEYVAULT_NAME }}
+
+      - name: 3-1) Configure NPM with Nexus Registry
+        run: |
+          cat <<EOF >> .npmrc
+          registry=https://repository.azdevops.kt.co.kr/repository/npm-group/
+          //repository.azdevops.kt.co.kr/repository/AA000000-devops-hosted-npm/:username=${{ env.NEXUS_USERNAME }}
+          //repository.azdevops.kt.co.kr/repository/AA000000-devops-hosted-npm/:_password=$(echo -n "${{ env.NEXUS_PASSWORD }}" | base64)
+          always-auth=true
+          EOF
+        shell: bash
+
+      - name: 4) Checkout manifests repository
+        uses: actions/checkout@v4
+        with:
+          repository: PG056504-ALP/manifests
+          token: ${{ env.CICD_TOKEN }}  # OIDC 자동 연동
+          ref: main
+
+      - name: 5) Kubectl tool installer
+        uses: imranismail/setup-kustomize@v1
+        with:
+          version: latest
+        
+      - name: 6) Update Kubernetes manifests for DEV
+        env:
+          ACCESS_TOKEN: ${{ steps.oidc.outputs.result }}
+        run: |
+          cd ${{ env.REPO_NAME }}/overlays/dev
+          kustomize edit set image ${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}=${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}:${{ needs.build.outputs.image_tag }}
+
+      - name: 7) Commit and push changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'            
+          git add .
+          git commit -m "k8s manifest for DEV image tag: ${{ needs.build.outputs.image_tag }}"
+          git push origin main -f
+
+  update-manifests-stg:
+    if: github.event.inputs.environment == 'stg' && github.event.inputs.dev_image_tag != ''
+    runs-on: ["npm-arc"]
+
+    permissions:
+      id-token: write  # GitHub에서 Azure로 인증을 위한 OIDC 토큰 권한
+      contents: write
+
+    steps:
+      - name: 1) Parse Azure credentials (key vault)
+        id: parse-credentials
+        run: |
+          echo "AZURE_CLIENT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .clientId)" >> $GITHUB_ENV
+          echo "AZURE_TENANT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .tenantId)" >> $GITHUB_ENV
+          echo "AZURE_SUBSCRIPTION_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .subscriptionId)" >> $GITHUB_ENV
+          echo "AZURE_KEYVAULT_NAME=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .keyVaultName)" >> $GITHUB_ENV
+          echo $ACTIONS_ID_TOKEN_REQUEST_TOKEN | cut -d '.' -f 2 | base64 -d | jq
+
+      - name: 2) Azure login (OIDC)
+        uses: azure/login@v2
+        env:
+          AZURE_LOGIN_PRE_CLEANUP: true
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}        
+        
+      - name: 3) Retrieve secrets (key vault)
+        run: |
+          echo "ACR_USERNAME=$(az keyvault secret show --name acr-username --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "ACR_PASSWORD=$(az keyvault secret show --name acr-password --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "ACR_URL=$(az keyvault secret show --name acr-url --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "CICD_TOKEN=$(az keyvault secret show --name cicd-token --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+          echo "NEXUS_USERNAME=$(az keyvault secret show --name nexus-username --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "NEXUS_PASSWORD=$(az keyvault secret show --name nexus-password --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+
+
+        env:
+          AZURE_CLIENT_ID: ${{ env.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ env.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          AZURE_KEYVAULT_NAME: ${{ env.AZURE_KEYVAULT_NAME }}
+
+      - name: 3-1) Configure NPM with Nexus Registry
+        run: |
+          cat <<EOF >> .npmrc
+          registry=https://repository.azdevops.kt.co.kr/repository/npm-group/
+          //repository.azdevops.kt.co.kr/repository/AA000000-devops-hosted-npm/:username=${{ env.NEXUS_USERNAME }}
+          //repository.azdevops.kt.co.kr/repository/AA000000-devops-hosted-npm/:_password=$(echo -n "${{ env.NEXUS_PASSWORD }}" | base64)
+          always-auth=true
+          EOF
+        shell: bash
+
+      - name: 4) Login to ACR
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ env.ACR_URL }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ env.ACR_PASSWORD }}
+
+      - name: 5) Dev → PRD 이미지 복사 (Skip)
+        run: |
+          echo "Image copy skip!!"
+
+      - name: 6) Checkout manifests repository
+        uses: actions/checkout@v4
+        with:
+          repository: PG056504-ALP/manifests
+          token: ${{ env.CICD_TOKEN }}  # OIDC 자동 연동
+          ref: main
+
+      - name: 7) Kubectl tool installer
+        uses: imranismail/setup-kustomize@v1
+        with:
+          version: latest
+        
+      - name: 8) Update Kubernetes manifests for STG
+        env:
+          ACCESS_TOKEN: ${{ steps.oidc.outputs.result }}
+        run: |
+          cd ${{ env.REPO_NAME }}/overlays/stg
+          kustomize edit set image ${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}=${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}:${{ github.event.inputs.dev_image_tag }}
+
+      - name: 9) Commit and push changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'            
+          git add .
+          git commit -m "k8s manifest for STG image tag: ${{ github.event.inputs.dev_image_tag }}"
+          git push origin main -f
+
+  update-manifests-prd:
+    if: github.event.inputs.environment == 'prd' && github.event.inputs.dev_image_tag != ''
+    runs-on: ["npm-arc"]
+
+    permissions:
+      id-token: write  # GitHub에서 Azure로 인증을 위한 OIDC 토큰 권한
+      contents: write
+
+    steps:
+      - name: 1) Parse Azure credentials (key vault)
+        id: parse-credentials
+        run: |
+          echo "AZURE_CLIENT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .clientId)" >> $GITHUB_ENV
+          echo "AZURE_TENANT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .tenantId)" >> $GITHUB_ENV
+          echo "AZURE_SUBSCRIPTION_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .subscriptionId)" >> $GITHUB_ENV
+          echo "AZURE_KEYVAULT_NAME=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .keyVaultName)" >> $GITHUB_ENV
+          echo $ACTIONS_ID_TOKEN_REQUEST_TOKEN | cut -d '.' -f 2 | base64 -d | jq
+
+      - name: 2) Azure login (OIDC)
+        uses: azure/login@v2
+        env:
+          AZURE_LOGIN_PRE_CLEANUP: true
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}        
+        
+      - name: 3) Retrieve secrets (key vault)
+        run: |
+          echo "ACR_USERNAME=$(az keyvault secret show --name acr-username --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "ACR_PASSWORD=$(az keyvault secret show --name acr-password --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "ACR_URL=$(az keyvault secret show --name acr-url --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "CICD_TOKEN=$(az keyvault secret show --name cicd-token --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+          echo "NEXUS_USERNAME=$(az keyvault secret show --name nexus-username --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "NEXUS_PASSWORD=$(az keyvault secret show --name nexus-password --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+
+        env:
+          AZURE_CLIENT_ID: ${{ env.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ env.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          AZURE_KEYVAULT_NAME: ${{ env.AZURE_KEYVAULT_NAME }}
+
+      - name: 3-1) Configure NPM with Nexus Registry
+        run: |
+          cat <<EOF >> .npmrc
+          registry=https://repository.azdevops.kt.co.kr/repository/npm-group/
+          //repository.azdevops.kt.co.kr/repository/AA000000-devops-hosted-npm/:username=${{ env.NEXUS_USERNAME }}
+          //repository.azdevops.kt.co.kr/repository/AA000000-devops-hosted-npm/:_password=$(echo -n "${{ env.NEXUS_PASSWORD }}" | base64)
+          always-auth=true
+          EOF
+        shell: bash
+
+      - name: 4) Login to ACR
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ env.ACR_URL }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ env.ACR_PASSWORD }}
+
+      - name: 5) Dev → PRD 이미지 복사
+        run: |
+          docker pull ${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}:${{ github.event.inputs.dev_image_tag }}
+          docker tag ${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}:${{ github.event.inputs.dev_image_tag }} acraz01alp.azurecr.io/prd/${{ env.REPO_NAME }}:${{ github.event.inputs.dev_image_tag }}
+          docker push ${{ env.ACR_URL }}/prd/${{ env.REPO_NAME }}:${{ github.event.inputs.dev_image_tag }}
+
+      - name: 6) Checkout manifests repository
+        uses: actions/checkout@v4
+        with:
+          repository: PG056504-ALP/manifests
+          token: ${{ env.CICD_TOKEN }}  # OIDC 자동 연동
+          ref: main
+
+      - name: 7) Kubectl tool installer
+        uses: imranismail/setup-kustomize@v1
+        with:
+          version: latest
+        
+      - name: 8) Update Kubernetes manifests for PRD
+        env:
+          ACCESS_TOKEN: ${{ steps.oidc.outputs.result }}
+        run: |
+          cd ${{ env.REPO_NAME }}/overlays/prd
+          kustomize edit set image ${{ env.ACR_URL }}/prd/${{ env.REPO_NAME }}=${{ env.ACR_URL }}/prd/${{ env.REPO_NAME }}:${{ github.event.inputs.dev_image_tag }}
+
+      - name: 9) Commit and push changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'            
+          git add .
+          git commit -m "k8s manifest for PRD image tag: ${{ github.event.inputs.dev_image_tag }}"
+          git push origin main -f
+
+  trivy:        
+    if: github.event.inputs.environment == 'trivy' && github.event.inputs.dev_image_tag != ''    
+    runs-on: [trivy-arc]        
+
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
+      security-events: write
+
+    steps:
+      - name: 1) Checkout Git Repository
+        uses: actions/checkout@v3
+
+      - name: Login to ACR
+        uses: ktdev-templates/kv-docker-login@v1
+        with:
+          azure-credentials: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 2) Retrieve Environment value
+        run: |          
+          echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+
+      - name: 3)Run Trivy and Upload Results
+        uses: ktdev-templates/trivy-arc-container@v1
+        with:
+          image: "prd/${{ env.REPO_NAME }}:${{ github.event.inputs.dev_image_tag }}"
+
+  trivy-dev:        
+    if: github.event.inputs.environment == 'dev'     
+    runs-on: [trivy-arc]    
+    needs: build
+
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
+      security-events: write
+
+    steps:
+      - name: 1) Checkout Git Repository
+        uses: actions/checkout@v3
+
+      - name: Login to ACR
+        uses: ktdev-templates/kv-docker-login@v1
+        with:
+          azure-credentials: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 2) Retrieve Environment value
+        run: |          
+          echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+
+      - name: 3)Run Trivy and Upload Results
+        uses: ktdev-templates/trivy-arc-container@v1
+        with:
+          image: "dev/${{ env.REPO_NAME }}:${{ needs.build.outputs.image_tag }}"
+
+  trivy-prd:        
+    if: github.event.inputs.environment == 'prd' && github.event.inputs.dev_image_tag != ''  
+    runs-on: [trivy-arc]    
+    needs: update-manifests-prd
+
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
+      security-events: write
+
+    steps:
+      - name: 1) Checkout Git Repository
+        uses: actions/checkout@v3
+
+      - name: Login to ACR
+        uses: ktdev-templates/kv-docker-login@v1
+        with:
+          azure-credentials: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 2) Retrieve Environment value
+        run: |          
+          echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+
+      - name: 3)Run Trivy and Upload Results
+        uses: ktdev-templates/trivy-arc-container@v1
+        with:
+          image: "prd/${{ env.REPO_NAME }}:${{ github.event.inputs.dev_image_tag }}" 

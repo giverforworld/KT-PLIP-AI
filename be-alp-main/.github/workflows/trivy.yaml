@@ -1,0 +1,138 @@
+name: (Container) Trivy Scan
+on:
+  workflow_call:
+    inputs:
+      image:
+        required: true
+        type: string
+      github_token:
+        required: false
+        type: string
+    secrets:
+      AZURE_CREDENTIALS:
+        required: true
+
+permissions:
+  actions: read
+  security-events: write
+  contents: read
+  id-token: write
+
+jobs:
+  scan:
+    runs-on: [self-hosted, Linux, X64, trivy, scanner]
+    steps:
+
+      - name: 0) Check Input Values
+        run: |
+          echo "Target image: ${{ inputs.image }}"
+          if [[ -z "${{ inputs.image }}" ]]; then
+            echo "[ERROR] Input 'image' is empty. Please check."
+            exit 1
+          fi
+
+      - name: 1) Set env NOW
+        id: set_env_now
+        run: |
+          export TZ="Asia/Seoul"
+          NOW=${GITHUB_REF##*/}-$(date +'%Y%m%d%H%M%S')
+          echo "NOW=$NOW" >> $GITHUB_ENV
+
+      - name: 2) Create Temp Workspace Env
+        run: |
+          echo "WORKSPACE=${{ env.NOW }}_${{ github.sha }}" >> $GITHUB_ENV
+
+      - name: 3) mkdir WORKSPACE and caches
+        run: |
+          mkdir -p "${{ env.WORKSPACE }}"
+          mkdir -p "${{ env.WORKSPACE }}/.trivy-cache"
+          mkdir -p "${{ env.WORKSPACE }}/.tmp"
+          chmod -R u+rwX "${{ env.WORKSPACE }}"
+          # 선택: 광범위 권한이 필요하다면 아래 라인 사용 (self-hosted 환경 권한 혼선 방지)
+          chmod -R 777 "${{ env.WORKSPACE }}/.trivy-cache" "${{ env.WORKSPACE }}/.tmp"
+
+      - name: 4) Parse Azure credentials (key vault)
+        id: parse-credentials
+        run: |
+          echo "AZURE_CLIENT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .clientId)" >> $GITHUB_ENV
+          echo "AZURE_TENANT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .tenantId)" >> $GITHUB_ENV
+          echo "AZURE_SUBSCRIPTION_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .subscriptionId)" >> $GITHUB_ENV
+          echo "AZURE_KEYVAULT_NAME=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .keyVaultName)" >> $GITHUB_ENV
+
+      - name: 5) Azure login (OIDC)
+        uses: azure/login@v2
+        env:
+          AZURE_LOGIN_PRE_CLEANUP: true
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: 6) Retrieve secrets (key vault)
+        run: |
+          echo "ACR_USERNAME=$(az keyvault secret show --name acr-username --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "ACR_PASSWORD=$(az keyvault secret show --name acr-password --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "ACR_URL=$(az keyvault secret show --name acr-url --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+        env:
+          AZURE_CLIENT_ID: ${{ env.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ env.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          AZURE_KEYVAULT_NAME: ${{ env.AZURE_KEYVAULT_NAME }}
+
+      - name: 7) Login to ACR
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ env.ACR_URL }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ env.ACR_PASSWORD }}
+
+      - name: 8) Copy Trivy configs into WORKSPACE
+        run: |
+          /usr/bin/cp -rf /home/devops/trivy/config/trivy_config.yaml ./${{ env.WORKSPACE }}/trivy_config.yaml
+          /usr/bin/cp -rf /home/devops/trivy/config/trivy_result_filter.sh ./${{ env.WORKSPACE }}/trivy_result_filter.sh
+          /usr/bin/cp -rf /home/devops/trivy/config/cve_latest.txt ./${{ env.WORKSPACE }}/cve_latest.txt
+          chmod +x ./${{ env.WORKSPACE }}/trivy_result_filter.sh
+
+      - name: 9) Run Trivy
+        id: trivy_scan
+        env:
+          TMPDIR: ${{ env.WORKSPACE }}/.tmp
+        run: |
+          cd "${{ env.WORKSPACE }}"
+          IMAGE="${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}:${{ inputs.image }}"
+
+          echo "docker manifest inspect \"${IMAGE}\""
+          if ! docker manifest inspect "${IMAGE}" > /dev/null 2>&1; then
+            echo "Image does not exist. Please check if the value is correct."
+            exit 1
+          fi
+          echo "Image exists. Run trivy ..."
+
+          # Trivy 실행: 캐시/임시 디렉터리 명시, 결과 JSON 고정 출력
+          /usr/bin/trivy image \
+            --config ./trivy_config.yaml \
+            --cache-dir "${PWD}/.trivy-cache" \
+            --format json \
+            --output "${PWD}/trivy-results.json" \
+            "${IMAGE}"
+
+      - name: 10) Filter Trivy Scan Results (kt cve list)
+        run: |
+          cd "${{ env.WORKSPACE }}"
+          ./trivy_result_filter.sh ./trivy-results.json ./cve_latest.txt
+
+      - name: 11) Convert Filtered JSON to SARIF
+        run: |
+          cd "${{ env.WORKSPACE }}"
+          /usr/bin/trivy convert --format sarif --output trivy-results-final.sarif trivy-results-final.json
+
+      - name: 12) Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: '${{ env.WORKSPACE }}/trivy-results-final.sarif'
+
+      - name: 13) Clean Files
+        if: always()
+        run: |
+          rm -rf "${{ env.WORKSPACE }}"

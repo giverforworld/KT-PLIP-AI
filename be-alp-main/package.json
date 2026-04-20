@@ -1,0 +1,63 @@
+{
+  "name": "alp-backend",
+  "version": "1.0.0",
+  "main": "app.js",
+  "license": "MIT",
+  "scripts": {
+    "dev": "tsc && cross-env NODE_ENV=dev concurrently \"tsc -w\" \"nodemon dist/app\"",
+    "build": "tsc && copyfiles -u 1 src/swagger/**/* dist/",
+    "start": "cross-env NODE_ENV=production node dist/app.js"
+  },
+  "dependencies": {
+    "@azure/monitor-opentelemetry": "^1.9.0",
+    "@opensearch-project/opensearch": "^2.12.0",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.56.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.57.2",
+    "@opentelemetry/resources": "^1.28.0",
+    "@opentelemetry/sdk-metrics": "^1.30.1",
+    "@opentelemetry/sdk-node": "^0.57.2",
+    "@opentelemetry/sdk-trace-base": "^1.30.1",
+    "@opentelemetry/semantic-conventions": "^1.30.0",
+    "cors": "^2.8.5",
+    "cross-env": "^7.0.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-validator": "^7.2.0",
+    "helmet": "^8.0.0",
+    "js-yaml": "^4.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "minimatch": "^3.1.5",
+    "module-alias": "^2.2.3",
+    "morgan": "^1.10.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "typescript": "^5.6.2",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/module-alias": "^2.0.4",
+    "@types/morgan": "^1.9.9",
+    "@types/node": "^20.12.0",
+    "@types/proj4": "^2.19.0",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.6",
+    "concurrently": "^9.0.1",
+    "copyfiles": "^2.4.1",
+    "nodemon": "^3.1.7",
+    "proj4": "^2.20.2"
+  },
+  "overrides": {
+    "@apidevtools/json-schema-ref-parser": "11.9.3",
+    "@apidevtools/swagger-parser": "11.0.1",
+    "path-to-regexp": "0.1.13",
+    "lodash": ">=4.18.0"
+  },
+  "_moduleAliases": {
+    "@": "dist"
+  }
+}

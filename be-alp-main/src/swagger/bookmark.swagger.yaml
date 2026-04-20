@@ -1,0 +1,99 @@
+# ALP version 1.0
+# Copyright © 2024 kt corp. All rights reserved.
+#
+# This is a proprietary software of kt corp, and you may not use this file except in
+# compliance with a license agreement with kt corp. Any redistribution or use of this
+# software, with or without modification, shall be strictly prohibited without prior written
+# approval of kt corp. The copyright notice above does not evidence any actual or
+# intended publication of such software.
+
+components:
+  schemas:
+    Bookmarkgroup:
+      type: object
+      properties:
+        groupId:
+          type: string
+          example: "group1"
+          description: 폴더 아이디
+        groupName:
+          type: string
+          example: "새 폴더"
+          description: 폴더 명 입니다. 최대 20자
+        description:
+          type: string
+          example: "생활이동에 관련된 폴더 입니다."
+          description: 폴더 설명 입니다. 최대 50자
+    Bookmark:
+      type: object
+      properties:
+        groupId:
+          type: string
+          example: "group1"
+          description: 폴더 아이디
+        page:
+          type: string
+          example: "mop"
+          description: 페이지 명
+        subPage:
+          type: string
+          example: "status"
+          description: 페이지 내에 탭 명
+        start:
+          type: number
+          example: "202408"
+          description: 기간 조회 시작일
+        end:
+          type: number
+          example: "202408"
+          description: 기간 조회 종료일
+        regions:
+          type: string
+          example: "mop"
+          description: 페이지 명
+        data:
+          type: object
+          description: 차트 데이터
+    BookmarkParams:
+      type: object
+      properties:
+        groupIds:
+          type: array
+          items:
+            type: string
+            example: "group01"
+            description: 폴더 아이디
+        page:
+          type: string
+          example: "mop"
+          description: 페이지 명
+        subPage:
+          type: string
+          example: "status"
+          description: 페이지 내에 탭 명
+        options:
+          type: object
+          properties:
+            start:
+              type: number
+              example: "202408"
+              description: 기간 조회 시작일
+            end:
+              type: number
+              example: "202408"
+              description: 기간 조회 종료일
+            regions:
+              type: string
+              example: "41111"
+              description: 지역 번호
+        order:
+          type: number
+          example: 1
+          description: 차트 정렬 순서
+        dataId:
+          type: string
+          example: "LLP40010_01-1739419405464"
+          description: 북마크 id
+        data:
+          type: object
+          description: 차트 데이터

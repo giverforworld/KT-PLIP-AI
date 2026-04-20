@@ -1,0 +1,207 @@
+name: (Container) Trivy Scan
+on:
+  workflow_call:
+    inputs:
+      image:
+        required: true
+        type: string
+      github_token:
+        required: false
+        type: string
+    secrets:
+      AZURE_CREDENTIALS: 
+        required: true
+         
+permissions:
+  actions: read
+  security-events: write
+  contents: read
+  id-token: write
+ 
+jobs:
+  scan:
+    runs-on: [self-hosted, Linux, X64, trivy, scanner]
+    steps:
+ 
+      - name: 0) Check Input Values
+        run: |
+          echo "Target image: ${{ inputs.image }}"
+           
+          if [[ -z "${{ inputs.image }}" ]]; then
+            echo "[ERROR] Input 'image' is empty. Please check."
+            exit 1
+          fi
+           
+      - name: 1) Set env NOW
+        id: set_env_now
+        run: |
+          export TZ="Asia/Seoul"
+          NOW=${GITHUB_REF##*/}-$(date +'%Y%m%d%H%M%S')
+          echo "NOW=$NOW" >> $GITHUB_ENV
+           
+      - name: 2) Create Temp Workspace
+        run: |
+          echo "WORKSPACE=${{ env.NOW }}_${{ github.sha }}" >> $GITHUB_ENV
+ 
+      - name: 3) mkdir WORKSPACE
+        run: |
+          mkdir ${{ env.WORKSPACE }}
+ 
+      - name: 4) Parse Azure credentials (key vault)
+        id: parse-credentials
+        run: |
+          echo "AZURE_CLIENT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .clientId)" >> $GITHUB_ENV
+          echo "AZURE_TENANT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .tenantId)" >> $GITHUB_ENV
+          echo "AZURE_SUBSCRIPTION_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .subscriptionId)" >> $GITHUB_ENV
+          echo "AZURE_KEYVAULT_NAME=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r .keyVaultName)" >> $GITHUB_ENV
+ 
+      - name: 5) Azure login (OIDC)
+        uses: azure/login@v2
+        env:
+          AZURE_LOGIN_PRE_CLEANUP: true
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+       
+      - name: 6) Retrieve secrets (key vault)
+        run: |
+          echo "ACR_USERNAME=$(az keyvault secret show --name acr-username --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "ACR_PASSWORD=$(az keyvault secret show --name acr-password --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "ACR_URL=$(az keyvault secret show --name acr-url --vault-name $AZURE_KEYVAULT_NAME --query value -o tsv)" >> $GITHUB_ENV
+          echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+        env:
+          AZURE_CLIENT_ID: ${{ env.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ env.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          AZURE_KEYVAULT_NAME: ${{ env.AZURE_KEYVAULT_NAME }}
+ 
+      - name: 7) Login to ACR
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ env.ACR_URL }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ env.ACR_PASSWORD }}
+
+      # - name: 8) Log in to Azure Container Registry
+      #   run: echo ${{ secrets.ACR_PASSWORD }} | docker login ${{ vars.APPCR_LOGIN_SERVER }} -u ${{ secrets.ACR_USERNAME }} --password-stdin
+           
+      - name: 8) Replace Config to WORKSPACE
+        run: |
+          /usr/bin/cp -rf /home/devops/trivy/config/trivy_config.yaml ./${{ env.WORKSPACE }}/trivy_config.yaml
+          /usr/bin/cp -rf /home/devops/trivy/config/trivy_result_filter.sh ./${{ env.WORKSPACE }}/trivy_result_filter.sh
+          /usr/bin/cp -rf /home/devops/trivy/config/cve_latest.txt ./${{ env.WORKSPACE }}/cve_latest.txt
+ 
+      - name: 9) Run Trivy
+        id: trivy_scan
+        run: |
+          cd ${{ env.WORKSPACE }}
+
+          echo "docker manifest inspect \"${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}:${{ inputs.image }}\""        
+          docker manifest inspect "${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}:${{ inputs.image }}"        
+          
+          IMAGE="${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}:${{ inputs.image }}"          
+          if docker manifest inspect "${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}:${{ inputs.image }}" > /dev/null 2>&1; then
+            echo "Image exists. Run trivy ..."
+          else
+            echo "Image does not exist. Please check if the value is correct."
+            exit 1
+          fi
+
+          echo "/usr/bin/trivy image --config ./trivy_config.yaml \"${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}:${{ inputs.image }}\"" 
+          /usr/bin/trivy image --config ./trivy_config.yaml "${{ env.ACR_URL }}/dev/${{ env.REPO_NAME }}:${{ inputs.image }}"
+  
+      - name: 10) Filter Trivy Scan Results (kt cve list)
+        run: |
+          cd ${{ env.WORKSPACE }}
+          ./trivy_result_filter.sh ./trivy-results.json ./cve_latest.txt
+ 
+      - name: 11) Convert Filtered JSON to SARIF
+        run: |
+          cd ${{ env.WORKSPACE }}
+          /usr/bin/trivy convert --format sarif --output trivy-results-final.sarif trivy-results-final.json
+           
+      - name: 12) Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: '${{ env.WORKSPACE }}/trivy-results-final.sarif'
+           
+      # - name: 14) Send Slack
+      #   uses: 8398a7/action-slack@v3
+      #   with:
+      #     icon_emoji: ':octocat:'
+      #     username: 'Trivy Bot'
+      #     author_name: 'Trivy 취약점 스캔이 완료되었습니다.'
+      #     status: ${{ job.status }}
+      #     fields: repo, messages, commit, author, action, eventName, ref, workflow, job, took
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #   if: always() # Pick up events even if the job fails or is canceled.
+ 
+      # - name: 14) Send Slack
+      #   env:
+      #     SECURITY_URL: "https://github.com/${{ github.repository }}/security/code-scanning"
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #   if: ${{ env.SLACK_WEBHOOK_URL != '' }}
+      #   run: |
+      #     curl -X POST "${SLACK_WEBHOOK_URL}" \
+      #       -H "Content-Type: application/json" \
+      #       --data '{
+      #         "text": "🚀 *Trivy Workflow Completed!*",
+      #         "blocks": [
+      #           {
+      #             "type": "section",
+      #             "text": {
+      #               "type": "mrkdwn",
+      #               "text": ":white_check_mark: *Trivy Workflow Completed!*"
+      #             }
+      #           },
+      #           {
+      #             "type": "divider"
+      #           },
+      #           {
+      #             "type": "section",
+      #             "text": {
+      #               "type": "mrkdwn",
+      #               "text": ":warning: *보안 취약점 스캔이 완료되었습니다.*"
+      #             }
+      #           },
+      #           {
+      #             "type": "actions",
+      #             "elements": [
+      #               {
+      #                 "type": "button",
+      #                 "text": {
+      #                   "type": "plain_text",
+      #                   "text": "🔍 보안 이슈 확인하기 (Security Tab)"
+      #                 },
+      #                 "style": "primary",
+      #                 "url": "'"${SECURITY_URL}"'"
+      #               }
+      #             ]
+      #           }
+      #         ]
+      #       }'
+ 
+      # - name: 16) Convert Trivy JSON to CSV (via jq)
+      #   run: |
+      #     cd ${{ env.WORKSPACE }}
+      #     CSV_NAME=trivy-results-final-${{ env.NOW }}.csv
+      #     jq -r '
+      #       ["Target","VulnerabilityID","PkgName","InstalledVersion","FixedVersion","Severity","Title"],
+      #       (.Results[]?.Vulnerabilities[]? | [
+      #         .Target, .VulnerabilityID, .PkgName, .InstalledVersion, .FixedVersion, .Severity, .Title
+      #       ])
+      #       | @csv
+      #     ' trivy-results-final.json > $CSV_NAME
+      #     echo "CSV_NAME=$CSV_NAME" >> $GITHUB_ENV
+       
+      # - name: 17) Upload Trivy CSV result as GitHub Actions artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: trivy-scan-report-csv-${{ env.NOW }}
+      #     path: ${{ env.WORKSPACE }}/${{ env.CSV_NAME }}
+             
+      - name: 13) Clean Files
+        run: |
+          rm -rf ${{ env.WORKSPACE }}
